@@ -1,25 +1,43 @@
-#!/usr/bin/env python
-#
-# Copyright 2007 Google Inc.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
-import webapp2
+import os, logging
 
-class MainHandler(webapp2.RequestHandler):
+import wsgiref.handlers
+
+from google.appengine.ext import webapp, db
+from google.appengine.api import xmpp, users, urlfetch
+from google.appengine.ext.webapp.util import login_required
+
+
+class BaseHandler(webapp.RequestHandler):
+    server_jid = os.environ.get('APPLICATION_ID') + '@appspot.com'
+    server_url = "http://%s.appspot.com" % os.environ.get('APPLICATION_ID')
+
+
+class MainHandler(BaseHandler):
     def get(self):
-        self.response.write('Hello world!')
+        self.response.out.write('Hello~Please add <i>%s</i> to your contact list' % self.server_url)
 
-app = webapp2.WSGIApplication([
-    ('/', MainHandler)
-], debug=True)
+
+class XMPPHandler(BaseHandler):
+    def post(self):
+        message = xmpp.Message(self.request.POST)
+        logging.info("XMPP Sender: %s - body: %s" % (message.sender, message.body))
+        cmd = message.body.split(' ')[0].lower()
+        body = message.body[len(cmd) + 1:]
+        if cmd == 'echo':
+            message.reply(body)
+        elif cmd == 'sum':
+            numbers = body.split(' ')
+            total = 0
+            try:
+                for x in numbers:
+                    total += int(x)
+                text = "%s = %s" % (" + ".join(numbers), total)
+            except:
+                text = "Couldn't add these up!"
+            message.reply(text)
+        else:
+            message.reply('I don\'t understand "%s"' % cmd)
+
+
+app = webapp.WSGIApplication([('/', MainHandler),
+                              ('/_ah/xmpp/message/chat/', XMPPHandler)], debug=True)
